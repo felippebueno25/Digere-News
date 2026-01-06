@@ -4,12 +4,20 @@
 Este é um **bot automatizado de agregação de notícias** que:
 1. Lê RSS do Google News (Brasil)
 2. Resolve URLs por busca no DuckDuckGo (bypassa redirecionador)
-3. Extrai conteúdo com `newspaper3k`
-4. Resume via Gemini AI (google-generativeai)
+3. Extrai conteúdo com **Trafilatura (principal) + Newspaper3k (fallback)**
+4. Resume via Gemini AI (google-genai)
 5. Envia briefing ao Telegram
 6. Roda automaticamente via GitHub Actions (3x/dia: 8h, 12h, 21h BRT)
 
 **Arquitetura**: Script Python single-file (`app.py`) sem dependências de banco/servidor.
+
+## Pipeline de Extração (Crítico)
+O sistema usa **extração em cascata** para maximizar taxa de sucesso:
+1. **Trafilatura** (prioridade): Melhor para texto limpo, robusto contra paywalls leves
+2. **Newspaper3k** (fallback): Usa User-Agent de navegador real (`Mozilla/5.0...`)
+3. Se ambos falharem (<300 chars): Link alternativo via `smry.ai`
+
+**Código-chave**: [`extract_content()`](app.py#L50-L95) - Nunca remover tentativas múltiplas.
 
 ## Configuração do Ambiente
 
@@ -33,23 +41,24 @@ python app.py
 ## Fluxo de Dados Crítico
 
 ```
-RSS Feed → DuckDuckGo (resolve URL limpa) → newspaper3k (extrai texto) 
+RSS Feed → DuckDuckGo (resolve URL limpa) → Trafilatura/Newspaper3k (extrai texto)
 → Gemini (resume) → Telegram API (envia) + briefing_diario.md (salva)
 ```
 
 ### Tratamento de Erros Especial
 - **Paywall detectado**: Conteúdo insuficiente (<300 chars) → link alternativo via smry.ai
-- **Falha DuckDuckGo**: Pula notícia silenciosamente
+- **Falha DuckDuckGo**: Pula notícia silenciosamente (retry 2x com delay 2s)
 - **Erro Gemini**: Retorna mensagem de erro mas continua processamento
 - **Telegram limite**: Divide mensagens em blocos de 4000 caracteres
 
 ## Padrões e Convenções
 
 ### Modelo de IA
-Sempre use `gemini-2.5-flash` (definido no código) - não trocar para modelos caros sem justificativa.
+Sempre use `gemini-2.5-flash-lite` (definido no código) - não trocar para modelos caros sem justificativa.
 
 ### Rate Limiting
-- `time.sleep(1)` entre requisições de notícias (evita blocks do DuckDuckGo)
+- `time.sleep(3)` entre requisições de notícias (evita blocks do DuckDuckGo)
+- `time.sleep(2)` entre retries do DuckDuckGo
 - Limite de `MAX_ITEMS = 5` notícias por execução (reduz custo API Gemini)
 
 ### Formato de Saída
@@ -80,20 +89,21 @@ Comente/remova as vars de ambiente do Telegram - o script apenas salva `briefing
 - **Workflow**: [.github/workflows/daily_news.yml](.github/workflows/daily_news.yml)
 - **Horários**: 11:00, 15:00, 00:00 UTC (expressão cron)
 - **Teste manual**: Botão "Run workflow" no GitHub
-- **Artefatos**: Cada execução salva `briefing-<run_id>` por 90 dias
+- **Artefatos**: Cada execução salva `briefing-result` por 3 dias (antes eram 90)
 
 ## Integrações Externas
 
 ### APIs Usadas
 - **Google News RSS**: Sem autenticação, topic=Brasil (query params no URL)
-- **DuckDuckGo Search**: Biblioteca `ddgs` (sem API key)
-- **Gemini AI**: SDK oficial `google.generativeai` (requer `GEMINI_API_KEY`)
+- **DuckDuckGo Search**: Biblioteca `ddgs` (sem API key, retry 2x com delay)
+- **Gemini AI**: SDK oficial `google.genai` (requer `GEMINI_API_KEY`)
 - **Telegram Bot**: REST API direta via `requests` (não usa biblioteca)
 
 ### Dependências Críticas
-- `newspaper3k` + `lxml_html_clean`: Parsing de HTML (requer ambos)
+- `trafilatura` + `curl_cffi`: Extrator principal de texto (primeira linha de defesa)
+- `newspaper3k`: Fallback para extração de HTML com User-Agent customizado
 - `feedparser`: Parse de XML/RSS
-- `duckduckgo-search`: Alias `ddgs` (não confundir com pacote `duckduckgo`)
+- `ddgs` (duckduckgo-search): Busca para resolver URLs (não confundir com pacote `duckduckgo`)
 
 ## Convenções de Código
 - Funções auxiliares antes de `main()` (ordem: busca → extração → IA → envio)
