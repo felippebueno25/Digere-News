@@ -1,9 +1,10 @@
 import os
 import time
+from datetime import datetime, timedelta, timezone
 import feedparser
-import google.generativeai as genai
+from google import genai # Nova SDK moderna
+from ddgs import DDGS    # Biblioteca corrigida
 import requests
-from duckduckgo_search import DDGS  # Importação corrigida
 from newspaper import Article
 
 # ================= CONFIGURAÇÕES =================
@@ -11,35 +12,42 @@ GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Validação crítica antes de iniciar
-if not GEMINI_KEY:
-    print("❌ ERRO CRÍTICO: A variável GEMINI_API_KEY não foi encontrada.")
-    # Não paramos o script totalmente para permitir testes locais sem API, 
-    # mas o resumo falhará.
-else:
-    # Configura o SDK do Gemini
-    genai.configure(api_key=GEMINI_KEY)
-
-# Usando gemini-1.5-flash (versão estável e rápida atual)
-# Se o 2.0 estiver disponível na sua conta, pode alterar para 'gemini-2.0-flash-exp'
-MODEL_VERSION = 'gemini-1.5-flash'
-
 RSS_URL = "https://news.google.com/rss/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRFZxYUdjU0JYQjBMVUpTR2dKQ1VpZ0FQAQ?hl=pt-BR&gl=BR&ceid=BR%3Apt-419"
 MAX_ITEMS = 5 
 
 # ================= FUNÇÕES DE APOIO =================
 
-def get_clean_url_via_search(title):
-    """Bypass do redirecionador do Google via DuckDuckGo."""
+def get_br_time():
+    """Retorna a data/hora atual no fuso horário de Brasília (UTC-3)."""
+    utc_now = datetime.now(timezone.utc)
+    br_time = utc_now - timedelta(hours=3)
+    return br_time.strftime('%d/%m %H:%M')
+
+def resolve_url(title, google_link):
+    """
+    Tenta obter a URL limpa. 
+    Estratégia 1: Busca no DuckDuckGo (ddgs).
+    Estratégia 2: Tenta seguir o redirect do Google (fallback).
+    """
+    # 1. Tentar DuckDuckGo (DDGS)
     try:
-        # max_results=1 garante que pegamos o primeiro link
         with DDGS() as ddgs:
             results = list(ddgs.text(title, region='br-pt', max_results=1))
             if results:
                 return results[0]['href']
     except Exception as e:
         print(f"  [!] Erro no DuckDuckGo: {e}")
-    return None
+
+    # 2. Fallback: Tentar resolver o redirect do Google diretamente
+    try:
+        print("  [i] Tentando resolver redirect do Google...")
+        # User-agent é essencial para o Google não bloquear o request
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        response = requests.head(google_link, allow_redirects=True, headers=headers, timeout=5)
+        return response.url
+    except Exception as e:
+        print(f"  [!] Falha total na resolução de URL: {e}")
+        return google_link # Retorna o link sujo mesmo, melhor que nada
 
 def extract_content(url):
     """Extrai o corpo do texto da notícia."""
@@ -52,39 +60,38 @@ def extract_content(url):
         return None
 
 def summarize_with_gemini(title, text):
-    """Gera o resumo usando a API do Gemini."""
+    """Gera o resumo usando a NOVA SDK do Google GenAI."""
     if not GEMINI_KEY:
         return "⚠️ Erro: Chave Gemini não configurada."
-        
     if not text or len(text) < 300:
         return None
 
     try:
-        model = genai.GenerativeModel(MODEL_VERSION)
+        client = genai.Client(api_key=GEMINI_KEY)
         
         prompt = f"""
-        Você é um assistente de curadoria de notícias. 
-        Crie um resumo executivo em Markdown com 3 a 4 bullet points curtos e diretos em português.
-        
+        Atue como editor chefe. Resuma a notícia abaixo em 3 bullet points curtos em português do Brasil.
         Título: {title}
-        Conteúdo: {text[:4000]}
+        Texto: {text[:4000]}
         """
         
-        response = model.generate_content(prompt)
+        # Chamada atualizada para a nova SDK
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=prompt
+        )
         return response.text
     except Exception as e:
-        return f"Erro ao processar com Gemini: {e}"
+        return f"Erro na IA: {e}"
 
 def send_telegram_message(text):
-    """Envia a mensagem final para o Telegram."""
+    """Envia a mensagem para o Telegram com tratamento de erros."""
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("Telegram não configurado. Pulando envio.")
         return
     
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     
-    # O Telegram tem limite de 4096 caracteres. Se exceder, dividimos.
-    # Margem de segurança de 4000
+    # Dividir mensagens longas (limite 4096 do Telegram)
     if len(text) > 4000:
         parts = [text[i:i+4000] for i in range(0, len(text), 4000)]
     else:
@@ -92,58 +99,54 @@ def send_telegram_message(text):
 
     for part in parts:
         try:
-            payload = {"chat_id": TELEGRAM_CHAT_ID, "text": part, "parse_mode": "Markdown"}
-            r = requests.post(url, json=payload)
-            if r.status_code != 200:
-                print(f"Erro Telegram: {r.text}")
+            requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": part, "parse_mode": "Markdown"})
         except Exception as e:
-            print(f"Exceção no envio Telegram: {e}")
+            print(f"Erro envio Telegram: {e}")
 
 # ================= FLUXO PRINCIPAL =================
 
 def main():
-    print("--- 🚀 Iniciando Digere-News ---")
+    print("--- 🚀 Iniciando Digere-News (Versão 2.0) ---")
     
+    if not GEMINI_KEY:
+        print("❌ ERRO: GEMINI_API_KEY não encontrada.")
+        return
+
     feed = feedparser.parse(RSS_URL)
     
-    # Cabeçalho com data
-    current_time = time.strftime('%d/%m %H:%M')
-    full_report = f"🗞️ *Briefing de Notícias* - {current_time}\n\n"
+    # Cabeçalho com hora corrigida
+    full_report = f"🗞️ *Briefing de Notícias* - {get_br_time()}\n\n"
+    
+    items_processed = 0
 
-    # Itera sobre as notícias
-    for i, entry in enumerate(feed.entries[:MAX_ITEMS]):
-        print(f"[{i+1}/{MAX_ITEMS}] Processando: {entry.title}")
+    for entry in feed.entries:
+        if items_processed >= MAX_ITEMS:
+            break
+            
+        print(f"Processando: {entry.title}")
         
-        # 1. Obter URL Limpa
-        url = get_clean_url_via_search(entry.title)
-        if not url: 
-            print("   -> URL não encontrada via busca. Pulando.")
-            continue
+        # Resolve URL (com fallback robusto)
+        url = resolve_url(entry.title, entry.link)
         
-        # 2. Extrair Conteúdo
         content = extract_content(url)
-        
-        # 3. Resumir com IA
         summary = summarize_with_gemini(entry.title, content)
         
-        # Fallback para Smry.ai se falhar a extração ou resumo
+        # Se falhou a extração, gera link smry.ai
         if not summary or "Erro" in summary:
-            # Se houve erro ou conteúdo vazio, gera link alternativo
-            # Nota: smry.ai aceita a URL completa após a barra
-            summary = f"⚠️ Conteúdo protegido ou erro na IA. [Leia via Smry.ai](https://smry.ai/{url})"
+            # Garante que não passamos o link do google para o smry se possível
+            clean_link_for_smry = url if "news.google.com" not in url else entry.link
+            summary = f"⚠️ Resumo indisponível. [Leia via Smry.ai](https://smry.ai/{clean_link_for_smry})"
 
         full_report += f"🔹 *{entry.title}*\n{summary}\n[Link Original]({url})\n\n---\n\n"
-        
-        # Delay ético para não bloquear o DuckDuckGo
-        time.sleep(2) 
+        items_processed += 1
+        time.sleep(1) 
 
-    # Salva localmente para debug (artefato do GitHub Actions)
+    # Salvar e Enviar
     with open("briefing_diario.md", "w", encoding="utf-8") as f:
         f.write(full_report)
     
-    # Envia para o telemóvel
     send_telegram_message(full_report)
-    print("✅ Processo concluído e enviado!")
+    print("✅ Concluído!")
 
 if __name__ == "__main__":
     main()
