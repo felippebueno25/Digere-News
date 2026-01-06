@@ -86,22 +86,6 @@ def generate_final_report(news_data):
     2.  **Escaneabilidade:** Use **negrito** apenas em: nomes próprios cruciais, números, datas e valores monetários. Isso guia o olho do leitor.
     3.  **Densidade:** Elimine palavras de transição vazias ("no entanto", "além disso", "vale ressaltar"). Vá direto ao ponto.
     4.  **Estrutura Mental:** Para cada notícia, responda implicitamente: "O que houve?" e "Por que isso importa/Qual o contexto?".
-
-    FORMATO DE SAÍDA OBRIGATÓRIO (Markdown):
-    🔹 **[Título Claro e Informativo]**
-    * **Fato:** [Resumo direto do acontecimento principal em 1 frase. Voz ativa.]
-    * **Contexto:** [Por que isso é relevante, histórico breve ou impacto futuro. 1 frase.]
-    [Link Original](url)
-    ---
-
-    Exemplo de Transformação:
-    Entrada: "Governo anuncia nova medida que muda tudo na economia" (Texto sobre aumento da Selic para 12%)
-    Saída:
-    🔹 **Banco Central eleva taxa Selic para 12% ao ano**
-    * **Fato:** O **Copom** decidiu aumentar a taxa básica de juros em **0,5 ponto percentual** para conter a inflação.
-    * **Contexto:** É a **3ª alta consecutiva**, encarecendo o crédito e impactando o consumo das famílias.
-    [Link Original](...)
-    ---
     """
 
     # MONTAGEM DO PROMPT (Otimizada)
@@ -119,11 +103,11 @@ def generate_final_report(news_data):
         # 3. Formato de entrada minimalista para economizar tokens
         # O LLM entende XML-like tags ou separadores simples melhor que texto descritivo.
         prompt_content += f"""
-        <news>
-        Title: {item['title']}
-        URL: {item['url']}
-        Body: {content_preview}
-        </news>
+        <n>
+        <original_title>{item['title']}</original_title>
+        <url>{item['url']}</url>
+        <body>{clean_text[:2500]}</body>
+        </n>
         """
 
     try:
