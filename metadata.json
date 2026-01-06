@@ -1,7 +1,0 @@
-{
-  "name": "Digere News",
-  "description": "Uma plataforma inteligente que utiliza IA para consolidar e resumir as notícias mais relevantes do dia por categoria, oferecendo uma leitura rápida e eficiente.",
-  "requestFramePermissions": [
-    "geolocation"
-  ]
-}

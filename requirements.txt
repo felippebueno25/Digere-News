@@ -1,0 +1,7 @@
+feedparser
+duckduckgo-search
+newspaper3k
+openai
+lxml_html_clean
+google.genai
+ddgs
