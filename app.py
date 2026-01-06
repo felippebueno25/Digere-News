@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from datetime import datetime, timedelta, timezone
 import feedparser
@@ -66,44 +67,61 @@ def extract_content_robust(url):
 
 def generate_final_report(news_data):
     """
-    Envia TODAS as notícias para o Gemini 2.5 de uma vez só.
+    Envia TODAS as notícias para o Gemini de uma vez só, 
+    otimizado para economia de tokens.
     """
-    if not GEMINI_KEY: return "⚠️ Erro: API Key não configurada (Use 'export GEMINI_API_KEY=...')."
+    if not GEMINI_KEY: return "⚠️ Erro: API Key não configurada."
     if not news_data: return "⚠️ Nenhuma notícia foi coletada."
 
-    print(f"\n[IA] Gerando relatório consolidado via Gemini 2.5 ({len(news_data)} notícias)...")
+    print(f"\n[IA] Gerando relatório consolidado ({len(news_data)} notícias)...")
 
-    # 1. Monta o Prompt com os dados brutos
-    prompt_content = f"Data do Briefing: {get_br_time()}\n\n"
+    # INSTRUÇÃO DO SISTEMA (Compactada)
+    # Define o formato de saída desejado e a persona.
+    system_instruction = (
+        "Você é um editor de notícias 'Digere-News'. Resuma as notícias fornecidas em tópicos "
+        "curtos e objetivos (pt-BR). Estrutura de saída para cada notícia:\n"
+        "🔹 **[Título]**\n"
+        "    * [Ponto chave 1]\n"
+        "    * [Ponto chave 2]\n"
+        "    [Link Original](url)\n"
+        "---\n"
+        "Ignore rodapés e textos de navegação. Seja direto."
+    )
+
+    # MONTAGEM DO PROMPT (Otimizada)
+    prompt_content = f"Data: {get_br_time()}\n\n"
     
-    for idx, item in enumerate(news_data, 1):
-        content_preview = item['content'][:10000] if item['content'] else "Conteúdo não disponível (Erro na extração)."
+    for item in news_data:
+        # 1. Limpeza de "sujeira" (espaços duplos e quebras de linha excessivas)
+        raw_text = item['content'] or ""
+        clean_text = re.sub(r'\s+', ' ', raw_text).strip()
         
+        # 2. Truncamento inteligente (2500 chars é suficiente para o contexto principal)
+        # O lead jornalístico está sempre no início.
+        content_preview = clean_text[:2500] 
+        
+        # 3. Formato de entrada minimalista para economizar tokens
+        # O LLM entende XML-like tags ou separadores simples melhor que texto descritivo.
         prompt_content += f"""
-        --- NOTÍCIA {idx} ---
-        Título: {item['title']}
-        Link Original: {item['url']}
-        Conteúdo Bruto: 
-        {content_preview}
-        
+        <news>
+        Title: {item['title']}
+        URL: {item['url']}
+        Body: {content_preview}
+        </news>
         """
-
-    # 2. Instruções para o Gemini 2.5
-    system_instruction = """
-    Você é o editor chefe do bot "Digere-News". 
-    Sua tarefa é receber um lote de notícias brutas e escrever um Briefing Executivo. Seja direto. Não inclua introduções como "Aqui está o resumo".
-    """
 
     try:
         client = genai.Client(api_key=GEMINI_KEY)
-        # Atualizado para o modelo que você mostrou no print
         response = client.models.generate_content(
-            model='gemini-2.5-flash-lite', 
+            model='gemini-2.5-flash-lite', # Modelo econômico
+            config=genai.types.GenerateContentConfig(
+                temperature=0.4 # Menos criativo, mais focado nos fatos
+            ),
             contents=[system_instruction, prompt_content]
         )
         return response.text
     except Exception as e:
-        return f"Erro fatal na geração do relatório via IA: {e}"
+        return f"Erro fatal na IA: {e}"
 
 def send_telegram(text):
     """Envia o relatório final para o Telegram."""
