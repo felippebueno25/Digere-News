@@ -43,16 +43,25 @@ def extract_content(url):
         return None
 
 def summarize_with_gemini(title, text):
-    """Resumo via IA."""
+    """Gera o resumo usando a API do Gemini."""
     if not text or len(text) < 300:
         return None
 
-    prompt = f"Resuma a notícia '{title}' em 3 bullet points curtos em português. Conteúdo: {text[:4000]}"
+    prompt = f"""
+    Você é um assistente de curadoria de notícias. 
+    Crie um resumo executivo em Markdown com 3 a 4 bullet points curtos e diretos em português.
+    
+    Título: {title}
+    Conteúdo: {text[:4000]}
+    """
+
     try:
+        # Usando o objeto 'model' definido no escopo global
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"Erro na IA: {e}"
+        return f"Erro ao processar com Gemini: {e}"
+
 
 def send_telegram_message(text):
     """Envia a mensagem final para o Telegram."""

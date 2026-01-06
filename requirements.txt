@@ -3,6 +3,6 @@ duckduckgo-search
 newspaper3k
 openai
 lxml_html_clean
-google.genai
+google-genai
 ddgs
 requests

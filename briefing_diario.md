@@ -1,7 +1,7 @@
-🗞️ *Briefing de Notícias* - 06/01 13:03
+🗞️ *Briefing de Notícias* - 06/01 13:24
 
 🔹 *Trump rejeita eleições na Venezuela nos próximos 30 dias - Poder360*
-Erro na IA: 
+Erro ao processar com Gemini: 
   No API_KEY or ADC found. Please either:
     - Set the `GOOGLE_API_KEY` environment variable.
     - Manually pass the key with `genai.configure(api_key=my_api_key)`.
@@ -11,7 +11,7 @@ Erro na IA:
 ---
 
 🔹 *Bombeiros relatam uma série de erros no combate ao incêndio no subsolo do Shopping Tijuca - O Globo*
-Erro na IA: 
+Erro ao processar com Gemini: 
   No API_KEY or ADC found. Please either:
     - Set the `GOOGLE_API_KEY` environment variable.
     - Manually pass the key with `genai.configure(api_key=my_api_key)`.
@@ -27,22 +27,22 @@ Erro na IA:
 ---
 
 🔹 *Primeiro-ministro da Gronelândia diz "basta" após a última ameaça de Trump - Euronews.com*
-Erro na IA: 
+Erro ao processar com Gemini: 
   No API_KEY or ADC found. Please either:
     - Set the `GOOGLE_API_KEY` environment variable.
     - Manually pass the key with `genai.configure(api_key=my_api_key)`.
     - Or set up Application Default Credentials, see https://ai.google.dev/gemini-api/docs/oauth for more information.
-[Link Original](https://mbcnoticias.com.br/primeiro-ministro-da-gronelandia-diz-basta-apos-a-ultima-ameaca-de-trump/)
+[Link Original](https://regionalpaulista.com.br/noticias/isso-ja-basta-primeiro-ministro-da-groenlandia-responde-a-ultima-ameaca-de-anexacao-de-donald-trump-noticias-do-mundo/212122/)
 
 ---
 
-🔹 *Sufoco na escuridão: moradores e comerciantes de Leme e Copacabana enfrentam três dias sem luz, com falta d'água e prejuízos - O Globo*
-Erro na IA: 
+🔹 *Irmão de Eliza Samudio se pronuncia sobre passaporte encontrado em Portugal - CNN Brasil*
+Erro ao processar com Gemini: 
   No API_KEY or ADC found. Please either:
     - Set the `GOOGLE_API_KEY` environment variable.
     - Manually pass the key with `genai.configure(api_key=my_api_key)`.
     - Or set up Application Default Credentials, see https://ai.google.dev/gemini-api/docs/oauth for more information.
-[Link Original](https://oglobo.globo.com/rio/noticia/2026/01/06/sufoco-na-escuridao-moradores-e-comerciantes-de-leme-e-copacabana-enfrentam-tres-dias-sem-luz-com-falta-dagua-e-prejuizos.ghtml)
+[Link Original](https://www.cnnbrasil.com.br/nacional/brasil/irmao-de-eliza-samudio-se-pronuncia-sobre-passaporte-encontrado-em-portugal/)
 
 ---
 
