@@ -13,7 +13,7 @@ GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-RSS_URL = "https://news.google.com/rss/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRFZxYUdjU0JYQjBMVUpTR2dKQ1VpZ0FQAQ?hl=pt-BR&gl=BR&ceid=BR%3Apt-419"
+RSS_URL = "https://news.google.com/rss/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRGx1YlY4U0JYQjBMVUpTR2dKQ1VpZ0FQAQ?hl=pt-BR&gl=BR&ceid=BR%3Apt-419"
 MAX_ITEMS = 20 # Limite de notícias por execução 
 
 # ================= FUNÇÕES DE APOIO =================
@@ -91,18 +91,7 @@ def generate_final_report(news_data):
     # 2. Instruções para o Gemini 2.5
     system_instruction = """
     Você é o editor chefe do bot "Digere-News". 
-    Sua tarefa é receber um lote de notícias brutas e escrever um Briefing Executivo em Markdown.
-    
-    ESTRUTURA OBRIGATÓRIA DA RESPOSTA:
-    1. Título Geral: "🗞️ *Briefing de Notícias* - {DATA}"
-    2. Para cada notícia:
-       - Título: Use o emoji 🔹 seguido do título em negrito.
-       - Resumo: Escreva 3 bullet points curtos, objetivos e informativos (Português BR).
-       - Se o conteúdo bruto estiver vazio: Escreva "⚠️ Resumo indisponível (Fonte protegida)."
-       - Link: Ao final do resumo, coloque SEMPRE o link original fornecido no formato [Link Original](URL).
-       - Separador: Use "---" entre as notícias.
-    
-    Seja direto. Não inclua introduções como "Aqui está o resumo".
+    Sua tarefa é receber um lote de notícias brutas e escrever um Briefing Executivo. Seja direto. Não inclua introduções como "Aqui está o resumo".
     """
 
     try:
