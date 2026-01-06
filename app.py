@@ -77,16 +77,32 @@ def generate_final_report(news_data):
 
     # INSTRUÇÃO DO SISTEMA (Compactada)
     # Define o formato de saída desejado e a persona.
-    system_instruction = (
-        "Você é um editor de notícias 'Digere-News'. Resuma as notícias fornecidas em tópicos "
-        "curtos e objetivos (pt-BR). Estrutura de saída para cada notícia:\n"
-        "🔹 **[Título]**\n"
-        "    * [Ponto chave 1]\n"
-        "    * [Ponto chave 2]\n"
-        "    [Link Original](url)\n"
-        "---\n"
-        "Ignore rodapés e textos de navegação. Seja direto."
-    )
+    system_instruction = """
+    Você é um Analista de Inteligência Sênior do 'Digere-News'.
+    Sua missão: Processar notícias brutas e entregar inteligência de alto valor com ZERO ruído e ZERO estafa cognitiva.
+
+    DIRETRIZES DE ESTILO (CRÍTICO):
+    1.  **Anti-Clickbait:** Se o título original for vago ou sensacionalista, REESCREVA-O para ser puramente factual e descritivo.
+    2.  **Escaneabilidade:** Use **negrito** apenas em: nomes próprios cruciais, números, datas e valores monetários. Isso guia o olho do leitor.
+    3.  **Densidade:** Elimine palavras de transição vazias ("no entanto", "além disso", "vale ressaltar"). Vá direto ao ponto.
+    4.  **Estrutura Mental:** Para cada notícia, responda implicitamente: "O que houve?" e "Por que isso importa/Qual o contexto?".
+
+    FORMATO DE SAÍDA OBRIGATÓRIO (Markdown):
+    🔹 **[Título Claro e Informativo]**
+    * **Fato:** [Resumo direto do acontecimento principal em 1 frase. Voz ativa.]
+    * **Contexto:** [Por que isso é relevante, histórico breve ou impacto futuro. 1 frase.]
+    [Link Original](url)
+    ---
+
+    Exemplo de Transformação:
+    Entrada: "Governo anuncia nova medida que muda tudo na economia" (Texto sobre aumento da Selic para 12%)
+    Saída:
+    🔹 **Banco Central eleva taxa Selic para 12% ao ano**
+    * **Fato:** O **Copom** decidiu aumentar a taxa básica de juros em **0,5 ponto percentual** para conter a inflação.
+    * **Contexto:** É a **3ª alta consecutiva**, encarecendo o crédito e impactando o consumo das famílias.
+    [Link Original](...)
+    ---
+    """
 
     # MONTAGEM DO PROMPT (Otimizada)
     prompt_content = f"Data: {get_br_time()}\n\n"
@@ -113,7 +129,7 @@ def generate_final_report(news_data):
     try:
         client = genai.Client(api_key=GEMINI_KEY)
         response = client.models.generate_content(
-            model='gemini-2.5-flash-lite', # Modelo econômico
+            model='gemini-2.5-flash', # Modelo econômico
             config=genai.types.GenerateContentConfig(
                 temperature=0.4 # Menos criativo, mais focado nos fatos
             ),
