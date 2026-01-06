@@ -14,7 +14,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 RSS_URL = "https://news.google.com/rss/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRFZxYUdjU0JYQjBMVUpTR2dKQ1VpZ0FQAQ?hl=pt-BR&gl=BR&ceid=BR%3Apt-419"
-MAX_ITEMS = 5 
+MAX_ITEMS = 2 # Limite de notícias por execução 
 
 # ================= FUNÇÕES DE APOIO =================
 
@@ -109,7 +109,7 @@ def generate_final_report(news_data):
         client = genai.Client(api_key=GEMINI_KEY)
         # Atualizado para o modelo que você mostrou no print
         response = client.models.generate_content(
-            model='gemini-2.5-flash', 
+            model='gemini-2.5-flash-lite', 
             contents=[system_instruction, prompt_content]
         )
         return response.text
