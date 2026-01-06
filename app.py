@@ -5,7 +5,8 @@ import feedparser
 from google import genai
 from ddgs import DDGS
 import requests
-from newspaper import Article
+import trafilatura
+from newspaper import Article, Config
 
 # ================= CONFIGURAÇÕES =================
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
@@ -13,7 +14,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 RSS_URL = "https://news.google.com/rss/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRFZxYUdjU0JYQjBMVUpTR2dKQ1VpZ0FQAQ?hl=pt-BR&gl=BR&ceid=BR%3Apt-419"
-MAX_ITEMS = 7 
+MAX_ITEMS = 5 
 
 # ================= FUNÇÕES =================
 
@@ -22,26 +23,19 @@ def get_br_time():
     return (datetime.now(timezone.utc) - timedelta(hours=3)).strftime('%d/%m %H:%M')
 
 def clean_title_for_search(title):
-    """
-    Remove o nome da fonte no final do título para melhorar a busca no DDG.
-    Ex: 'Dólar sobe a R$ 5 - UOL Economia' vira 'Dólar sobe a R$ 5'
-    """
+    """Remove a fonte do título para melhorar a busca no DDG."""
     if " - " in title:
         return title.rsplit(" - ", 1)[0]
     return title
 
 def resolve_url_ddg(title):
-    """
-    Busca Exclusiva no DuckDuckGo com retentativa.
-    """
+    """Busca Exclusiva no DuckDuckGo com headers reais."""
     clean_title = clean_title_for_search(title)
     print(f"  [Busca] Procurando: '{clean_title}'...")
 
-    # Tenta até 2 vezes
     for attempt in range(1, 3):
         try:
             with DDGS() as ddgs:
-                # region='br-pt' foca em resultados do Brasil
                 results = list(ddgs.text(clean_title, region='br-pt', max_results=1))
                 if results:
                     found_url = results[0]['href']
@@ -49,41 +43,81 @@ def resolve_url_ddg(title):
                     return found_url
         except Exception as e:
             print(f"  [!] Erro DDG (Tentativa {attempt}): {e}")
-            time.sleep(2) # Espera um pouco antes de tentar de novo
+            time.sleep(2)
             
-    print("  [Falha] Não foi possível encontrar o link no DuckDuckGo.")
+    print("  [Falha] Link não encontrado no DuckDuckGo.")
     return None
 
 def extract_content(url):
-    """Baixa o artigo usando newspaper3k."""
-    try:
-        # Se por acaso a URL ainda for do google, aborta para não travar
-        if "news.google.com" in url:
-            return None
-            
-        article = Article(url)
-        article.download()
-        article.parse()
-        return article.text
-    except Exception:
+    """
+    Tenta extrair o texto completo usando Trafilatura (Melhor) e Newspaper3k (Fallback).
+    Simula um navegador real para evitar bloqueios.
+    """
+    if "news.google.com" in url:
         return None
 
+    print("  [Extração] Baixando conteúdo...")
+    
+    # 1. Tentativa Principal: Trafilatura (Mais robusto para texto)
+    try:
+        downloaded = trafilatura.fetch_url(url)
+        if downloaded:
+            text = trafilatura.extract(downloaded, include_comments=False, include_tables=False)
+            if text and len(text) > 300:
+                print("  -> Sucesso com Trafilatura!")
+                return text
+    except Exception as e:
+        print(f"  [!] Trafilatura falhou: {e}")
+
+    # 2. Fallback: Newspaper3k com User-Agent de Navegador
+    print("  -> Tentando fallback com Newspaper3k...")
+    try:
+        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        config = Config()
+        config.browser_user_agent = user_agent
+        config.request_timeout = 10
+
+        article = Article(url, config=config)
+        article.download()
+        article.parse()
+        
+        if article.text and len(article.text) > 300:
+            print("  -> Sucesso com Newspaper3k!")
+            return article.text
+    except Exception as e:
+        print(f"  [!] Newspaper3k falhou: {e}")
+
+    return None
+
 def summarize_with_gemini(title, text):
-    """Resume com Gemini 1.5 Flash (SDK Novo)."""
+    """Resume com Gemini 1.5 Flash."""
     if not GEMINI_KEY:
         return "⚠️ Erro: Chave API não configurada."
+    
+    # Proteção: Se o texto for muito curto, provavelmente é erro de captura ou paywall rígido
     if not text or len(text) < 300:
         return None 
 
     try:
         client = genai.Client(api_key=GEMINI_KEY)
         prompt = f"""
-        Atue como jornalista sênior. Resuma a notícia abaixo em 3 bullet points informativos (Português BR).
+        Você é um editor sênior de tecnologia e política.
+        Abaixo está o texto completo de uma notícia.
+        
+        Seu objetivo:
+        1. Analise o texto na íntegra.
+        2. Crie um resumo informativo em 3 a 4 bullet points (Português BR).
+        3. Foque nos fatos, números e consequências. Evite lero-lero.
+        
         Título: {title}
-        Texto: {text[:4000]}
+        
+        Texto da Notícia:
+        {text[:8000]} 
         """
+        # Aumentei o limite de caracteres para 8000 para caber mais contexto
+        
         response = client.models.generate_content(
-            model='gemini-2.5-flash-lite',
+            model='gemini-1.5-flash',
             contents=prompt
         )
         return response.text
@@ -106,7 +140,7 @@ def send_telegram(text):
 # ================= MAIN =================
 
 def main():
-    print("--- 🚀 Iniciando v4.0 (Full DuckDuckGo) ---")
+    print("--- 🚀 Iniciando v5.0 (Trafilatura + Extração Robusta) ---")
     
     feed = feedparser.parse(RSS_URL)
     full_report = f"🗞️ *Briefing* - {get_br_time()}\n\n"
@@ -117,32 +151,31 @@ def main():
         
         print(f"\n📰 Notícia: {entry.title}")
         
-        # 1. Resolve URL (Só DDG)
+        # 1. Resolve URL
         clean_url = resolve_url_ddg(entry.title)
         
-        # Se não achou link, pula ou avisa
         if not clean_url:
             print("   -> Pulei (Link não encontrado)")
             continue
             
-        # 2. Extrai Texto
+        # 2. Extrai Texto (Agora muito mais forte)
         content = extract_content(clean_url)
         
         # 3. Resume
         summary = None
         if content:
             summary = summarize_with_gemini(entry.title, content)
+        else:
+            print("   -> Falha na extração do texto (Site blindado/Paywall?)")
         
         # 4. Monta Relatório
         if not summary or "Erro" in summary:
-            # Se falhar, manda link do Smry
             smry_link = f"https://smry.ai/{clean_url}"
-            full_report += f"🔹 *{entry.title}*\n⚠️ Resumo indisponível. [Leia no Smry.ai]({smry_link})\n[Link Original]({clean_url})\n\n---\n\n"
+            full_report += f"🔹 *{entry.title}*\n⚠️ Texto não extraído (Site protegido). [Tente ler no Smry.ai]({smry_link})\n[Link Original]({clean_url})\n\n---\n\n"
         else:
             full_report += f"🔹 *{entry.title}*\n{summary}\n[Link Original]({clean_url})\n\n---\n\n"
             
         count += 1
-        # Pausa importante para não bloquear o DDG
         time.sleep(3)
 
     # Finaliza

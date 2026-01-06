@@ -4,3 +4,4 @@ newspaper3k
 google-genai
 lxml_html_clean
 requests
+trafilatura
