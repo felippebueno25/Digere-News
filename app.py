@@ -1,26 +1,28 @@
 import os
 import time
-import random
 import feedparser
 import google.generativeai as genai
+import requests
 from ddgs import DDGS
 from newspaper import Article
 
 # ================= CONFIGURAÇÕES =================
-# No Codespace, use: export GEMINI_API_KEY="sua_chave"
-GEMINI_KEY = os.getenv("GEMINI_API_KEY") or "AIzaSyC9vh0luVyUQvS16wEdfa_hf3QmJOYyAn8"
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # Configura o SDK do Gemini
 genai.configure(api_key=GEMINI_KEY)
+# Usando gemini-1.5-flash para velocidade e custo/benefício
 model = genai.GenerativeModel('gemini-2.5-flash')
 
 RSS_URL = "https://news.google.com/rss/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRFZxYUdjU0JYQjBMVUpTR2dKQ1VpZ0FQAQ?hl=pt-BR&gl=BR&ceid=BR%3Apt-419"
 MAX_ITEMS = 5 
 
-# ================= FUNÇÕES =================
+# ================= FUNÇÕES DE APOIO =================
 
 def get_clean_url_via_search(title):
-    """Busca a URL original no DuckDuckGo para evitar bloqueios do Google."""
+    """Bypass do redirecionador do Google via DuckDuckGo."""
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(title, region='br-pt', max_results=1))
@@ -31,7 +33,7 @@ def get_clean_url_via_search(title):
     return None
 
 def extract_content(url):
-    """Extrai o texto da notícia."""
+    """Extrai o corpo do texto da notícia."""
     try:
         article = Article(url)
         article.download()
@@ -41,61 +43,65 @@ def extract_content(url):
         return None
 
 def summarize_with_gemini(title, text):
-    """Gera o resumo usando a API do Gemini."""
-    if not text:
+    """Resumo via IA."""
+    if not text or len(text) < 300:
         return None
 
-    prompt = f"""
-    Você é um assistente de curadoria de notícias. 
-    Abaixo está o título e o conteúdo bruto de uma notícia de tecnologia.
-    
-    Título: {title}
-    Conteúdo: {text[:4000]}
-    
-    Tarefa:
-    Crie um resumo executivo em Markdown com 3 a 4 bullet points curtos e diretos.
-    Se o conteúdo parecer ser apenas um aviso de paywall ou erro, informe que o conteúdo está bloqueado.
-    """
-
+    prompt = f"Resuma a notícia '{title}' em 3 bullet points curtos em português. Conteúdo: {text[:4000]}"
     try:
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"Erro ao processar com Gemini: {e}"
+        return f"Erro na IA: {e}"
 
-# ================= EXECUÇÃO =================
+def send_telegram_message(text):
+    """Envia a mensagem final para o Telegram."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Telegram não configurado. Pulando envio.")
+        return
+    
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    
+    # O Telegram tem limite de 4096 caracteres. Se exceder, dividimos.
+    if len(text) > 4000:
+        parts = [text[i:i+4000] for i in range(0, len(text), 4000)]
+    else:
+        parts = [text]
+
+    for part in parts:
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": part, "parse_mode": "Markdown"}
+        requests.post(url, json=payload)
+
+# ================= FLUXO PRINCIPAL =================
 
 def main():
-    print("--- 🚀 Iniciando Digere-News com Gemini ---")
+    print("--- 🚀 Iniciando Digere-News ---")
     
     feed = feedparser.parse(RSS_URL)
-    report_content = f"# 🗞️ Briefing de Notícias (Gemini)\nData: {time.strftime('%d/%m/%Y %H:%M')}\n\n"
+    full_report = f"🗞️ *Briefing de Notícias* - {time.strftime('%d/%m %H:%M')}\n\n"
 
     for i, entry in enumerate(feed.entries[:MAX_ITEMS]):
-        print(f"[{i+1}/{MAX_ITEMS}] Analisando: {entry.title}")
+        print(f"[{i+1}/{MAX_ITEMS}] Processando: {entry.title}")
         
-        clean_url = get_clean_url_via_search(entry.title)
-        if not clean_url: continue
+        url = get_clean_url_via_search(entry.title)
+        if not url: continue
         
-        raw_text = extract_content(clean_url)
+        content = extract_content(url)
+        summary = summarize_with_gemini(entry.title, content)
         
-        if raw_text and len(raw_text) > 300:
-            summary = summarize_with_gemini(entry.title, raw_text)
-        else:
-            smry_link = f"https://smry.ai/{clean_url}"
-            summary = f"⚠️ **Conteúdo Protegido.** [Leia via Smry.ai]({smry_link})"
+        if not summary:
+            summary = f"⚠️ Conteúdo com paywall. [Leia via Smry.ai](https://smry.ai/{url})"
 
-        report_content += f"## {entry.title}\n"
-        report_content += f"**Link:** {clean_url}\n\n"
-        report_content += f"{summary}\n\n"
-        report_content += "---\n\n"
-        
-        time.sleep(2) # Delay ético
+        full_report += f"🔹 *{entry.title}*\n{summary}\n[Link Original]({url})\n\n---\n\n"
+        time.sleep(1) # Delay para evitar blocks
 
+    # Salva localmente por segurança
     with open("briefing_diario.md", "w", encoding="utf-8") as f:
-        f.write(report_content)
+        f.write(full_report)
     
-    print("\n✅ Relatório gerado com sucesso!")
+    # Envia para o celular
+    send_telegram_message(full_report)
+    print("✅ Processo concluído e enviado!")
 
 if __name__ == "__main__":
     main()

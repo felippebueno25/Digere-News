@@ -5,3 +5,4 @@ openai
 lxml_html_clean
 google.genai
 ddgs
+requests
