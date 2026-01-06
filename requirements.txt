@@ -1,8 +1,6 @@
 feedparser
 duckduckgo-search
 newspaper3k
-openai
+google-generativeai
 lxml_html_clean
-google-genai
-ddgs
 requests
