@@ -117,7 +117,7 @@ def summarize_with_gemini(title, text):
         # Aumentei o limite de caracteres para 8000 para caber mais contexto
         
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-2.5-flash-lite',
             contents=prompt
         )
         return response.text
