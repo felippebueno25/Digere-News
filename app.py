@@ -166,7 +166,7 @@ def generate_final_report(news_data):
     try:
         client = genai.Client(api_key=GEMINI_KEY)
         response = client.models.generate_content(
-            model='gemini-2.5-flash', # Modelo econômico
+            model='gemini-2.5-flash-lite', # Modelo econômico
             config=genai.types.GenerateContentConfig(
                 temperature=0.4 # Menos criativo, mais focado nos fatos
             ),
