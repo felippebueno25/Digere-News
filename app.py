@@ -1,6 +1,8 @@
 import os
 import re
 import time
+import json
+import hashlib
 from datetime import datetime, timedelta, timezone
 import feedparser
 from google import genai
@@ -15,13 +17,64 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 RSS_URL = "https://news.google.com/rss/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRGx1YlY4U0JYQjBMVUpTR2dKQ1VpZ0FQAQ?hl=pt-BR&gl=BR&ceid=BR%3Apt-419"
-MAX_ITEMS = 20 # Limite de notícias por execução 
+MAX_ITEMS = 20 # Limite de notícias por execução
+HISTORY_FILE = ".news_history.json" # Histórico de notícias já enviadas
+HISTORY_DAYS = 7 # Manter histórico por 7 dias 
 
 # ================= FUNÇÕES DE APOIO =================
 
 def get_br_time():
     """Hora atual de Brasília (UTC-3)."""
     return (datetime.now(timezone.utc) - timedelta(hours=3)).strftime('%d/%m %H:%M')
+
+def load_history():
+    """Carrega o histórico de notícias já processadas."""
+    if not os.path.exists(HISTORY_FILE):
+        return {}
+    
+    try:
+        with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def save_history(history):
+    """Salva o histórico de notícias processadas."""
+    try:
+        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"⚠️ Erro ao salvar histórico: {e}")
+
+def get_news_hash(title, url):
+    """
+    Gera um hash único para uma notícia baseado em título + URL.
+    Isso evita duplicatas mesmo se o título mudar ligeiramente.
+    """
+    key = f"{title.lower().strip()}|{url.lower().strip()}"
+    return hashlib.md5(key.encode()).hexdigest()
+
+def is_news_duplicate(title, url, history):
+    """
+    Verifica se a notícia já foi processada.
+    Retorna True se é duplicata, False se é nova.
+    """
+    news_hash = get_news_hash(title, url)
+    return news_hash in history
+
+def clean_old_history(history):
+    """
+    Remove notícias do histórico que têm mais de HISTORY_DAYS dias.
+    Mantém o arquivo controlado.
+    """
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(hours=3, days=HISTORY_DAYS)).isoformat()
+    
+    cleaned = {}
+    for hash_id, entry in history.items():
+        if entry.get('timestamp', '') > cutoff_date:
+            cleaned[hash_id] = entry
+    
+    return cleaned
 
 def resolve_url_ddg(title):
     """
@@ -140,27 +193,41 @@ def send_telegram(text):
 # ================= MAIN =================
 
 def main():
-    print("--- 🚀 Iniciando v7.1 (Batch + Gemini 2.5) ---")
+    print("--- 🚀 Iniciando v8.0 (Com Deduplicação de Estado) ---")
+    
+    # Carregar histórico de notícias já processadas
+    history = load_history()
+    history = clean_old_history(history)  # Remover entradas antigas
+    print(f"📋 Histórico carregado: {len(history)} notícias já processadas")
     
     feed = feedparser.parse(RSS_URL)
     news_buffer = [] 
+    duplicates_found = 0
     
     count = 0
     for entry in feed.entries:
         if count >= MAX_ITEMS: break
         
-        print(f"\n📰 Processando: {entry.title}")
-        
-        # 1. Resolver URL
+        # Resolver URL antes de verificar duplicata
         clean_url = resolve_url_ddg(entry.title)
         if not clean_url:
+            print(f"📰 {entry.title}")
             print("   -> Pulei (Sem link)")
             continue
-
-        # 2. Extrair Conteúdo (Camuflado)
+        
+        # Verificar duplicata
+        if is_news_duplicate(entry.title, clean_url, history):
+            print(f"📰 {entry.title}")
+            print("   -> Duplicata detectada (pulado)")
+            duplicates_found += 1
+            continue
+        
+        print(f"📰 {entry.title}")
+        
+        # Extrair Conteúdo (Camuflado)
         content = extract_content_robust(clean_url)
         
-        # 3. Guardar no Buffer
+        # Guardar no Buffer
         news_buffer.append({
             'title': entry.title,
             'url': clean_url,
@@ -168,11 +235,25 @@ def main():
         })
         
         count += 1
-        time.sleep(2) 
+        time.sleep(2)
+    
+    print(f"\n📊 Resumo: {len(news_buffer)} notícias novas, {duplicates_found} duplicatas")
 
-    # 4. Gerar Relatório Final
+    # Gerar Relatório Final
     if news_buffer:
         final_report = generate_final_report(news_buffer)
+        
+        # Atualizar histórico com as notícias processadas
+        now = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
+        for item in news_buffer:
+            news_hash = get_news_hash(item['title'], item['url'])
+            history[news_hash] = {
+                'title': item['title'],
+                'url': item['url'],
+                'timestamp': now
+            }
+        
+        save_history(history)
         
         # Salvar e Enviar
         with open("briefing_diario.md", "w", encoding="utf-8") as f:
@@ -181,7 +262,7 @@ def main():
         send_telegram(final_report)
         print("\n✅ Relatório enviado com sucesso!")
     else:
-        print("\n⚠️ Nenhuma notícia processada.")
+        print("\n⚠️ Nenhuma notícia nova para processar.")
 
 if __name__ == "__main__":
     main()
